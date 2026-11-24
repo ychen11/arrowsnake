@@ -8,9 +8,10 @@ const LIMIT = 180;
 const PALETTE = [0x7be3c0, 0x7dbfed, 0xffd477, 0xf38fa2, 0xb9a0ec, 0x92d975, 0x75d7d4, 0xf1aa78];
 const canvas = document.querySelector('#gameCanvas');
 const wrap = document.querySelector('#canvasWrap');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.setClearColor(0x1d2941, 1);
 const scene = new THREE.Scene();
 const camera = new THREE.OrthographicCamera(-4.45, 4.45, 4.45, -4.45, 0.1, 100);
 camera.position.set(0, 0, 20);
@@ -208,24 +209,37 @@ function reset() {
   updateHud();
 }
 
-function onPointer(event) {
+function onPointer(event, clientX = event.clientX, clientY = event.clientY) {
+  if (event.button !== 0) return;
+  event.preventDefault();
   audio.unlock();
   if (ended) return;
   const rect = canvas.getBoundingClientRect();
-  pointer.x = (event.clientX - rect.left) / rect.width * 2 - 1;
-  pointer.y = -(event.clientY - rect.top) / rect.height * 2 + 1;
+  pointer.x = (clientX - rect.left) / rect.width * 2 - 1;
+  pointer.y = -(clientY - rect.top) / rect.height * 2 + 1;
   const world = new THREE.Vector3(pointer.x, pointer.y, 0).unproject(camera);
-  let closest = null;
-  let best = .105;
+  const scale = rect.width / (camera.right - camera.left);
+  const point = [world.x * scale, world.y * scale];
+  let closest = null, nearest = Infinity, second = Infinity;
   for (const arrow of arrows) {
-    if (!arrow.alive || active.has(arrow.id)) continue;
-    const points = arrow.route.points;
+    if (!arrow.alive) continue;
+    const points = arrow.points;
+    let distance = Infinity;
     for (let i = 1; i < points.length; i++) {
-      const distance = distanceToSegment([world.x, world.y], points[i - 1], points[i]);
-      if (distance < best) { best = distance; closest = arrow; }
+      distance = Math.min(distance, distanceToSegment(point,
+        points[i - 1].map(v => v * scale), points[i].map(v => v * scale)));
     }
+    // Include the arrowhead's visible tip in the clickable area.
+    const head = points.at(-1);
+    distance = Math.min(distance, distanceToSegment(point, head.map(v => v * scale),
+      head.map((v, i) => (v + arrow.direction[i] * .065) * scale)));
+    if (distance < nearest) { second = nearest; nearest = distance; closest = arrow; }
+    else second = Math.min(second, distance);
   }
-  if (closest) launch(closest);
+  // Moving snakes still participate in picking: tapping one must not pass
+  // through to a stationary neighbor. Ambiguous taps between snakes do nothing.
+  const touch = event.pointerType === 'touch';
+  if (closest && nearest <= (touch ? 7 : 8) && second - nearest > (touch ? 2 : 1)) launch(closest);
 }
 
 function animate(now) {
@@ -297,7 +311,25 @@ function hasExited(arrow) {
     dy > 0 && y > camera.top + margin || dy < 0 && y < camera.bottom - margin;
 }
 
-canvas.addEventListener('pointerdown', onPointer);
+let press = null;
+canvas.addEventListener('pointerdown', event => {
+  if (event.button !== 0 || press) return;
+  event.preventDefault();
+  audio.unlock();
+  press = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  canvas.setPointerCapture(event.pointerId);
+});
+canvas.addEventListener('pointerup', event => {
+  if (!press || press.id !== event.pointerId) return;
+  const start = press;
+  const tap = Math.hypot(event.clientX - start.x, event.clientY - start.y) <= 8;
+  press = null;
+  // Pick from the initial contact point so a slight finger drift cannot select
+  // a neighboring arrow when the pointer is released.
+  if (tap) onPointer(event, start.x, start.y);
+});
+canvas.addEventListener('pointercancel', () => { press = null; });
+canvas.addEventListener('lostpointercapture', () => { press = null; });
 el('#restartBtn').addEventListener('click', reset);
 el('#hintBtn').addEventListener('click', () => {
   if (hints <= 0 || ended) return;
@@ -311,6 +343,7 @@ el('#hintBtn').addEventListener('click', () => {
 });
 el('#themeBtn').addEventListener('click', () => {
   document.body.classList.toggle('light');
+  renderer.setClearColor(document.body.classList.contains('light') ? 0xdfeaf1 : 0x1d2941, 1);
   el('#themeBtn').textContent = document.body.classList.contains('light') ? '☀' : '☾';
 });
 el('#helpBtn').addEventListener('click', () => openOverlay({
