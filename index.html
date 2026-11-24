@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#11192d" />
+    <title>箭头突围 · 第一关</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark">↗</span><span>箭头<span class="brand-light">突围</span></span></div>
+        <div class="top-actions">
+          <button id="themeBtn" class="icon-button" aria-label="切换昼夜模式" title="切换昼夜模式">☾</button>
+          <button id="helpBtn" class="icon-button" aria-label="玩法说明" title="玩法说明">?</button>
+        </div>
+      </header>
+
+      <main class="game-shell">
+        <section class="game-heading">
+          <div class="eyebrow"><span class="eyebrow-line"></span> LEVEL 01 <span class="eyebrow-line"></span></div>
+          <h1>方阵迷踪</h1>
+          <p>找出出口，让每支箭头安全离场。</p>
+        </section>
+
+        <section class="stats" aria-label="游戏状态">
+          <div class="stat-card"><span class="stat-label">剩余箭头</span><div class="stat-value"><span id="remaining">58</span><small id="total"> / 58</small></div></div>
+          <div class="stat-card timer-card"><span class="stat-label">剩余时间</span><div class="stat-value" id="timer">03:00</div></div>
+          <div class="stat-card"><span class="stat-label">生命值</span><div id="hearts" class="hearts" aria-label="3 颗心">♥ ♥ ♥</div></div>
+        </section>
+
+        <section class="board-frame" aria-label="箭头游戏棋盘">
+          <div class="board-top"><span><span class="live-dot"></span> 第一关 · 方形阵列</span><span id="boardStatus">点击任意箭头开始</span></div>
+          <div id="canvasWrap"><canvas id="gameCanvas"></canvas><div id="hintToast" class="hint-toast" role="status"></div></div>
+          <div class="board-bottom"><span>每条彩色折线都是一支箭头</span><span id="progressText">0% CLEAR</span></div>
+          <div class="progress-track"><div id="progressFill"></div></div>
+        </section>
+
+        <div class="controls">
+          <div class="instruction"><span class="instruction-icon">↗</span><span><strong>点击箭头，让蛇身沿路径游出</strong><small>撞到其他箭头会失去一颗心</small></span></div>
+          <div class="control-buttons"><button id="hintBtn" class="control-button secondary">✦ <span>提示</span><i id="hintCount">3</i></button><button id="restartBtn" class="control-button primary">↻ <span>重新开始</span></button></div>
+        </div>
+      </main>
+
+      <div id="overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="overlayTitle">
+        <div class="modal"><div id="overlaySymbol" class="modal-symbol">↗</div><div id="overlayKicker" class="modal-kicker">LEVEL 01</div><h2 id="overlayTitle">玩法说明</h2><p id="overlayBody"></p><button id="overlayButton" class="control-button primary">开始游戏</button></div>
+      </div>
+    </div>
+    <link rel="stylesheet" href="./game.css" />
+    <script defer src="./game.js?v=6"></script>
+  </body>
+</html>
