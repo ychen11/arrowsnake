@@ -165,6 +165,7 @@ function finish(won) {
   ended = true;
   audio.stop();
   if (won) audio.victory();
+  else audio.failure();
   el('#boardStatus').textContent = won ? '全部箭头已清除' : '挑战结束';
   updateHud();
   openOverlay(won ? {
@@ -180,6 +181,7 @@ function finish(won) {
 
 function launch(arrow) {
   if (active.has(arrow.id) || ended || !arrow.alive || !el('#overlay').classList.contains('hidden')) return;
+  audio.clear();
   if (!started) {
     started = true;
     el('#boardStatus').textContent = '箭头正在突围';
@@ -252,7 +254,6 @@ function animate(now) {
     else updateHud();
   }
   if (active.size && !ended && el('#overlay').classList.contains('hidden')) {
-    audio.setFlight([...active.values()].some(motion => motion.phase === 'forward'));
     const moving = [...active.values()];
     // Small shared time steps keep fast heads from tunnelling through moving bodies.
     const steps = Math.ceil(dt / .008);
@@ -294,7 +295,7 @@ function animate(now) {
     }
     for (const { arrow } of moving) if (arrow.alive) paintSnake(arrow);
     if (!ended && arrows.every(arrow => !arrow.alive)) finish(true);
-  } else if (!active.size) audio.setFlight(false);
+  }
   for (const arrow of arrows) {
     if (!arrow.alive) continue;
     arrow.material.color.setHex(arrow.flashUntil > now ? 0xffffff : arrow.color);
