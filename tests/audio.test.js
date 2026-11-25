@@ -4,6 +4,7 @@ import { createGameAudio } from '../src/audio.js';
 
 function makeAudioHarness() {
   const calls = [];
+  const tracks = [];
   const parameter = () => ({ value: 0, setValueAtTime(...args) { calls.push(['set', ...args]); },
     exponentialRampToValueAtTime(...args) { calls.push(['exponential', ...args]); },
     linearRampToValueAtTime(...args) { calls.push(['linear', ...args]); },
@@ -23,12 +24,17 @@ function makeAudioHarness() {
     createOscillator() { const oscillator = node('oscillator'); calls.push(['oscillator']); return oscillator; }
     resume() { this.state = 'running'; return Promise.resolve(); }
   }
-  globalThis.window = { AudioContext: AudioContextMock, setTimeout: (fn) => fn() };
-  return calls;
+  class AudioMock {
+    constructor(src) { this.src = src; this.paused = true; this.currentTime = 0; tracks.push(this); }
+    play() { this.paused = false; return Promise.resolve(); }
+    pause() { this.paused = true; }
+  }
+  globalThis.window = { AudioContext: AudioContextMock, Audio: AudioMock, setTimeout: (fn) => fn() };
+  return { calls, tracks };
 }
 
 test('each clearing arrow gets an independent one-shot takeoff sound', () => {
-  const calls = makeAudioHarness();
+  const { calls } = makeAudioHarness();
   const audio = createGameAudio();
   audio.unlock();
   audio.clear();
@@ -38,7 +44,7 @@ test('each clearing arrow gets an independent one-shot takeoff sound', () => {
 });
 
 test('collision makes a short and long dry G3 beep', () => {
-  const calls = makeAudioHarness();
+  const { calls } = makeAudioHarness();
   const audio = createGameAudio();
   audio.unlock();
   audio.hit();
@@ -48,7 +54,7 @@ test('collision makes a short and long dry G3 beep', () => {
 });
 
 test('victory plays a short resolving melody', () => {
-  const calls = makeAudioHarness();
+  const { calls } = makeAudioHarness();
   const audio = createGameAudio();
   audio.unlock();
   audio.victory();
@@ -56,7 +62,7 @@ test('victory plays a short resolving melody', () => {
 });
 
 test('failure plays the 1.42-second preview and stops on restart', () => {
-  const calls = makeAudioHarness();
+  const { calls } = makeAudioHarness();
   const audio = createGameAudio();
   audio.unlock();
   audio.failure();
@@ -66,4 +72,19 @@ test('failure plays the 1.42-second preview and stops on restart', () => {
   assert.deepEqual(calls.filter(([name]) => name === 'start'), [['start', 'buffer']]);
   audio.stop();
   assert.deepEqual(calls.filter(([name]) => name === 'stop'), [['stop', 'buffer']]);
+});
+
+test('background music loops, starts after unlock, and resets when stopped', async () => {
+  const { tracks } = makeAudioHarness();
+  const audio = createGameAudio();
+  const [music] = tracks;
+  assert.equal(music.loop, true);
+  assert.equal(music.paused, true);
+  audio.unlock();
+  audio.startMusic();
+  await Promise.resolve();
+  assert.equal(music.paused, false);
+  audio.stop();
+  assert.equal(music.paused, true);
+  assert.equal(music.currentTime, 0);
 });

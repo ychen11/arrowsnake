@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "npm run build:standalone",
-    "build:standalone": "node -e \"const fs=require('node:fs');fs.rmSync('dist',{recursive:true,force:true});fs.mkdirSync('dist',{recursive:true})\" && esbuild src/main.js --bundle --format=iife --minify --outfile=game.js --loader:.css=empty && node -e \"const fs=require('node:fs');fs.copyFileSync('game.js','dist/game.js');fs.copyFileSync('src/style.css','game.css');fs.copyFileSync('src/style.css','dist/game.css');fs.copyFileSync('index.html','dist/index.html')\"",
+    "build:standalone": "node -e \"const fs=require('node:fs');fs.rmSync('dist',{recursive:true,force:true});fs.mkdirSync('dist',{recursive:true})\" && esbuild src/main.js --bundle --format=iife --minify --outfile=game.js --loader:.css=empty && node -e \"const fs=require('node:fs');fs.copyFileSync('game.js','dist/game.js');fs.copyFileSync('src/style.css','game.css');fs.copyFileSync('src/style.css','dist/game.css');fs.copyFileSync('index.html','dist/index.html');fs.copyFileSync('Morning_in_the_Conservatory.mp3','dist/Morning_in_the_Conservatory.mp3')\"",
     "build:vite": "vite build",
     "preview": "vite preview --host 0.0.0.0"
   },

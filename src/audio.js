@@ -2,7 +2,15 @@
 // gesture to satisfy iOS Safari and Android browser autoplay policies.
 export function createGameAudio() {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContextClass) return { unlock: () => {}, clear: () => {}, hit: () => {}, victory: () => {}, failure: () => {}, stop: () => {} };
+  const music = new window.Audio('./Morning_in_the_Conservatory.mp3');
+  music.loop = true;
+  music.preload = 'auto';
+  music.volume = 0.22;
+  if (!AudioContextClass) return {
+    unlock: () => {}, startMusic: () => music.play().catch(() => {}),
+    clear: () => {}, hit: () => {}, victory: () => {}, failure: () => {},
+    stop: () => { music.pause(); music.currentTime = 0; },
+  };
 
   const context = new AudioContextClass();
   const master = context.createGain();
@@ -17,6 +25,10 @@ export function createGameAudio() {
     if (unlocked) return;
     unlocked = true;
     if (context.state === 'suspended') context.resume().catch(() => {});
+  }
+
+  function startMusic() {
+    if (unlocked && music.paused) music.play().catch(() => {});
   }
 
   function clear() {
@@ -129,6 +141,8 @@ export function createGameAudio() {
   }
 
   function stop() {
+    music.pause();
+    try { music.currentTime = 0; } catch { /* Metadata may not be loaded yet. */ }
     if (failureSound) {
       failureSound.stop();
       failureSound = null;
@@ -138,5 +152,5 @@ export function createGameAudio() {
     }
     activeClearSounds.clear();
   }
-  return { unlock, clear, hit, victory, failure, stop };
+  return { unlock, startMusic, clear, hit, victory, failure, stop };
 }

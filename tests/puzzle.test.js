@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { GRID, STEP, generateLevel, validateLevel, makeRoute, snakePoints, findBlocker, findMovingBlocker } from '../src/puzzle.js';
+import { GRID, STEP, LEVEL_2_GRID, LEVEL_3_GRID, generateLevel, generateLevel2, generateLevel3, validateLevel, makeRoute, snakePoints, findBlocker, findMovingBlocker } from '../src/puzzle.js';
 
 test('dense square has disjoint orthogonal snakes with varied lengths and turns', () => {
   const snakes = generateLevel(23);
@@ -64,6 +64,29 @@ test('validation rejects holes, overlaps, and reversed head directions', () => {
   const broken = structuredClone(snakes);
   broken[0].direction = broken[0].direction.map(value => -value);
   assert.equal(validateLevel(broken), false);
+});
+
+test('level 2 covers half-size board, stays under half the arrow count, and is solvable', () => {
+  assert.ok(LEVEL_2_GRID ** 2 < GRID ** 2 / 2);
+  for (let seed = 0; seed < 30; seed++) {
+    const first = generateLevel(seed + 3000);
+    const second = generateLevel2(seed + 4000);
+    assert.ok(validateLevel(second, LEVEL_2_GRID), `invalid level 2 puzzle for seed ${seed}`);
+    assert.equal(new Set(second.flatMap(snake => snake.cells.map(([x, y]) => `${x},${y}`))).size, LEVEL_2_GRID ** 2);
+    assert.ok(second.length < first.length / 2, `level 2 has too many arrows for seed ${seed}`);
+    assert.equal(second.reduce((sum, snake) => sum + snake.cells.length, 0), LEVEL_2_GRID ** 2);
+  }
+});
+
+test('level 3 covers about 1.5 times level 2 area with 70–80 solvable arrows', () => {
+  assert.ok(LEVEL_3_GRID ** 2 / GRID ** 2 >= 1.45);
+  assert.ok(LEVEL_3_GRID ** 2 / GRID ** 2 <= 1.5);
+  for (let seed = 0; seed < 60; seed++) {
+    const third = generateLevel3(seed + 9000);
+    assert.ok(validateLevel(third, LEVEL_3_GRID), `invalid level 3 puzzle for seed ${seed}`);
+    assert.equal(new Set(third.flatMap(snake => snake.cells.map(([x, y]) => `${x},${y}`))).size, LEVEL_3_GRID ** 2);
+    assert.ok(third.length >= 70 && third.length <= 80, `level 3 has ${third.length} arrows for seed ${seed}`);
+  }
 });
 
 test('snake tail follows old bends while head moves straight and body length stays fixed', () => {

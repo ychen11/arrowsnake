@@ -1,5 +1,11 @@
 export const GRID = 27;
 export const STEP = 0.255;
+export const LEVEL_2_GRID = 19;
+export const LEVEL_2_MIN_LENGTH = 32;
+export const LEVEL_2_MAX_LENGTH = 55;
+export const LEVEL_3_GRID = 33;
+export const LEVEL_3_MIN_LENGTH = 12;
+export const LEVEL_3_MAX_LENGTH = 42;
 export const DIRECTIONS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
 
 function randomGenerator(seed) {
@@ -13,11 +19,11 @@ function randomGenerator(seed) {
 }
 
 const key = ([x, y]) => `${x},${y}`;
-const inside = ([x, y]) => x >= 0 && y >= 0 && x < GRID && y < GRID;
+const inside = ([x, y], grid = GRID) => x >= 0 && y >= 0 && x < grid && y < grid;
 
-function coveringPath(random, shuffle = true) {
+function coveringPath(random, grid = GRID, shuffle = true) {
   const path = [];
-  for (let y = 0; y < GRID; y++) for (let x = 0; x < GRID; x++) path.push([y % 2 ? GRID - 1 - x : x, y]);
+  for (let y = 0; y < grid; y++) for (let x = 0; x < grid; x++) path.push([y % 2 ? grid - 1 - x : x, y]);
   // Reconnect an endpoint to an adjacent interior vertex and reverse the suffix.
   // This preserves one continuous orthogonal path visiting EVERY cell once.
   if (shuffle) for (let attempt = 0; attempt < 6500; attempt++) {
@@ -35,10 +41,10 @@ function coveringPath(random, shuffle = true) {
   return path;
 }
 
-function partitionAndSolve(path, random) {
+function partitionAndSolve(path, random, grid = GRID, minLength = 9, maxLength = 33) {
   const pieces = [];
   for (let start = 0; start < path.length;) {
-    let length = Math.min(path.length - start, 9 + Math.floor(random() * 25));
+    let length = Math.min(path.length - start, minLength + Math.floor(random() * (maxLength - minLength + 1)));
     if (path.length - start - length === 1) length++;
     pieces.push(path.slice(start, start + length));
     start += length;
@@ -55,7 +61,7 @@ function partitionAndSolve(path, random) {
         const head = cells[end], neck = cells[end - 1];
         const direction = [head[0] - neck[0], head[1] - neck[1]];
         let clear = true;
-        for (let point = [head[0] + direction[0], head[1] + direction[1]]; inside(point); point = [point[0] + direction[0], point[1] + direction[1]]) {
+        for (let point = [head[0] + direction[0], head[1] + direction[1]]; inside(point, grid); point = [point[0] + direction[0], point[1] + direction[1]]) {
           if (occupied.has(key(point))) { clear = false; break; }
         }
         if (clear && (!best || end > best.end)) best = { index, cells, end, direction };
@@ -73,24 +79,24 @@ function partitionAndSolve(path, random) {
   return solution.reverse().map((snake, id) => ({ ...snake, id }));
 }
 
-export function validateLevel(snakes) {
+export function validateLevel(snakes, grid = GRID) {
   const occupied = new Set();
   for (const snake of snakes) {
     if (snake.cells.length < 2) return false;
     for (let i = 0; i < snake.cells.length; i++) {
       const cell = snake.cells[i];
-      if (!inside(cell) || occupied.has(key(cell))) return false;
+      if (!inside(cell, grid) || occupied.has(key(cell))) return false;
       occupied.add(key(cell));
       if (i && Math.abs(cell[0] - snake.cells[i - 1][0]) + Math.abs(cell[1] - snake.cells[i - 1][1]) !== 1) return false;
     }
     const head = snake.cells.at(-1), neck = snake.cells.at(-2);
     if (head[0] - neck[0] !== snake.direction[0] || head[1] - neck[1] !== snake.direction[1]) return false;
   }
-  if (occupied.size !== GRID * GRID) return false;
+  if (occupied.size !== grid * grid) return false;
   // Validate actual forward rays against ALL remaining bodies, including itself.
   for (const snake of [...snakes].reverse()) {
     const head = snake.cells.at(-1), [dx, dy] = snake.direction;
-    for (let point = [head[0] + dx, head[1] + dy]; inside(point); point = [point[0] + dx, point[1] + dy]) {
+    for (let point = [head[0] + dx, head[1] + dy]; inside(point, grid); point = [point[0] + dx, point[1] + dy]) {
       if (occupied.has(key(point))) return false;
     }
     for (const cell of snake.cells) occupied.delete(key(cell));
@@ -98,24 +104,41 @@ export function validateLevel(snakes) {
   return true;
 }
 
-export function generateLevel(seed = crypto.getRandomValues(new Uint32Array(1))[0]) {
+function generateConfiguredLevel(seed, { grid, minLength, maxLength, minArrows, maxArrows }) {
   const random = randomGenerator(seed);
-  for (let attempt = 0; attempt < 24; attempt++) {
-    const snakes = partitionAndSolve(coveringPath(random), random);
-    if (snakes && validateLevel(snakes)) return snakes;
+  const attempts = maxArrows ? 160 : 24;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const snakes = partitionAndSolve(coveringPath(random, grid, true), random, grid, minLength, maxLength);
+    const countInRange = snakes && (!minArrows || snakes.length >= minArrows) && (!maxArrows || snakes.length <= maxArrows);
+    if (countInRange && validateLevel(snakes, grid)) return snakes;
   }
   // A continuous row weave is a constructive fallback with the same full cover.
-  const fallback = partitionAndSolve(coveringPath(random, false), random);
-  if (!fallback || !validateLevel(fallback)) throw new Error('无法生成可解棋盘');
+  const fallback = partitionAndSolve(coveringPath(random, grid, false), random, grid, minLength, maxLength);
+  const countInRange = fallback && (!minArrows || fallback.length >= minArrows) && (!maxArrows || fallback.length <= maxArrows);
+  if (!countInRange || !validateLevel(fallback, grid)) throw new Error('无法生成可解棋盘');
   return fallback;
 }
 
-export function worldPoint([x, y]) {
-  return [(x - (GRID - 1) / 2) * STEP, (y - (GRID - 1) / 2) * STEP];
+const randomSeed = () => crypto.getRandomValues(new Uint32Array(1))[0];
+
+export function generateLevel(seed = randomSeed()) {
+  return generateConfiguredLevel(seed, { grid: GRID, minLength: 9, maxLength: 33 });
 }
 
-export function makeRoute(cells) {
-  const points = cells.map(worldPoint);
+export function generateLevel2(seed = randomSeed()) {
+  return generateConfiguredLevel(seed, { grid: LEVEL_2_GRID, minLength: LEVEL_2_MIN_LENGTH, maxLength: LEVEL_2_MAX_LENGTH });
+}
+
+export function generateLevel3(seed = randomSeed()) {
+  return generateConfiguredLevel(seed, { grid: LEVEL_3_GRID, minLength: LEVEL_3_MIN_LENGTH, maxLength: LEVEL_3_MAX_LENGTH, minArrows: 70, maxArrows: 80 });
+}
+
+export function worldPoint([x, y], grid = GRID) {
+  return [(x - (grid - 1) / 2) * STEP, (y - (grid - 1) / 2) * STEP];
+}
+
+export function makeRoute(cells, grid = GRID) {
+  const points = cells.map(cell => worldPoint(cell, grid));
   const distances = points.map((_, i) => i * STEP);
   return { points, distances, length: (points.length - 1) * STEP };
 }
@@ -165,7 +188,7 @@ export function distanceToSegment(point, a, b) {
 
 // Distance along a head's forward ray to another snake's current body.
 // Expanded segment bounds include the visible arrowhead and line thickness.
-export function findMovingBlocker(snake, snakes) {
+export function findMovingBlocker(snake, snakes, acrossTolerance = .045) {
   const head = snake.points.at(-1);
   const [dx, dy] = snake.direction;
   let closest = null;
@@ -178,7 +201,7 @@ export function findMovingBlocker(snake, snakes) {
       const alongB = (b[0] - head[0]) * dx + (b[1] - head[1]) * dy;
       const acrossA = (a[0] - head[0]) * dy - (a[1] - head[1]) * dx;
       const acrossB = (b[0] - head[0]) * dy - (b[1] - head[1]) * dx;
-      if (Math.min(acrossA, acrossB) > .045 || Math.max(acrossA, acrossB) < -.045 || Math.max(alongA, alongB) < -.09) continue;
+      if (Math.min(acrossA, acrossB) > acrossTolerance || Math.max(acrossA, acrossB) < -acrossTolerance || Math.max(alongA, alongB) < -.09) continue;
       const distance = Math.max(0, Math.min(alongA, alongB) - .09);
       if (!closest || distance < closest.distance) closest = { snake: other, distance };
     }

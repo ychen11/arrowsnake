@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import './style.css';
 
-import { GRID, STEP, generateLevel, makeRoute, snakePoints, findMovingBlocker, distanceToSegment } from './puzzle.js';
+import { GRID, STEP, LEVEL_2_GRID, LEVEL_3_GRID, generateLevel, generateLevel2, generateLevel3, makeRoute, snakePoints, findMovingBlocker, distanceToSegment } from './puzzle.js';
 import { createGameAudio } from './audio.js';
 
-const LIMIT = 180;
+const LEVEL_LIMITS = { 1: 60, 2: 180, 3: 240 };
 const PALETTE = [0x7be3c0, 0x7dbfed, 0xffd477, 0xf38fa2, 0xb9a0ec, 0x92d975, 0x75d7d4, 0xf1aa78];
 const canvas = document.querySelector('#gameCanvas');
 const wrap = document.querySelector('#canvasWrap');
@@ -20,9 +20,11 @@ const pointer = new THREE.Vector2();
 const arrows = [];
 const arrowLayer = new THREE.Group();
 scene.add(arrowLayer);
+let level = 1;
+let gridSize = GRID;
 let lives = 3;
 let hints = 3;
-let seconds = LIMIT;
+let seconds = LEVEL_LIMITS[1];
 let started = false;
 let ended = false;
 const active = new Map();
@@ -31,6 +33,33 @@ let lastFrame = performance.now();
 let toastTimeout;
 let overlayAction = null;
 let lastLayout = '';
+let language = 'zh';
+let fireworks = null;
+try { language = localStorage.getItem('arrowSnakeLanguage') === 'en' ? 'en' : 'zh'; } catch { /* Storage can be disabled for local files. */ }
+
+const TEXT = {
+  zh: {
+    gameName: '箭头突围', languageLabel: '切换语言', themeLabel: '切换昼夜模式', helpLabel: '玩法说明',
+    tagline: '找出出口，让每支箭头安全离场。', gameState: '游戏状态', remaining: '剩余箭头', time: '剩余时间', lives: '生命值', nextLevelTitle: '关卡完成！', nextLevelBody: n => `准备好进入第 ${n} 关了吗？`, nextLevelButton: '下一关',
+    board: '箭头游戏棋盘', boardName: n => `第${n}关 · 方形阵列`, boardStart: '点击任意箭头开始', boardMoving: '箭头正在突围', boardCleared: '全部箭头已清除', boardEnded: '挑战结束', levelButton: n => `关卡 ${n} ↗`, levelTitle: n => `切换到第${n}关`,
+    boardHint: '每条彩色折线都是一支箭头', instruction: '点击箭头，让蛇身沿路径游出', collisionHint: '撞到其他箭头会失去一颗心', hint: '提示', restart: '重新开始', clear: 'CLEAR',
+    hearts: n => `${n} 颗心`, hitToast: '撞到了！失去一颗心', safeToast: '闪烁的箭头可以安全离场',
+    completeKicker: 'LEVEL COMPLETE', completeTitle: '漂亮，全部突围！', completeBody: (time, count) => `你在 ${time} 内清除了全部 ${count} 支箭头。`, playAgain: '再玩一次', helpKicker: '玩法说明',
+    retryKicker: 'TRY AGAIN', outOfLives: '生命值耗尽', timeUp: '时间到了', retryBody: '先从外圈找出口，逐步为内侧箭头打开通路。', retry: '重新挑战',
+    helpTitle: '玩法说明', helpBody: '点击折线箭头的任意一段，头部会朝箭头所指方向前进，身体与尾部像贪吃蛇一样沿折线路径依次跟随。前方没有箭头就能离场；撞到其他箭头会返回原位，并失去一颗心。在当前关卡的限时内清空棋盘即可过关。', continue: '继续游戏',
+  },
+  en: {
+    gameName: 'ArrowSnake', languageLabel: 'Switch language', themeLabel: 'Toggle light/dark mode', helpLabel: 'How to play',
+    tagline: 'Find the exits and guide every arrow to safety.', gameState: 'Game status', remaining: 'Arrows left', time: 'Time left', lives: 'Lives', nextLevelTitle: 'Level complete!', nextLevelBody: n => `Ready to start level ${n}?`, nextLevelButton: 'Next level',
+    board: 'Arrow game board', boardName: n => `Level ${n} · Square formation`, boardStart: 'Tap any arrow to begin', boardMoving: 'Arrows are escaping', boardCleared: 'All arrows cleared', boardEnded: 'Game over', levelButton: n => `LEVEL ${n} ↗`, levelTitle: n => `Switch to level ${n}`,
+    boardHint: 'Each colored path is an arrow', instruction: 'Tap an arrow to send it along its path', collisionHint: 'Hitting another arrow costs one heart', hint: 'Hint', restart: 'Restart', clear: 'CLEAR',
+    hearts: n => `${n} ${n === 1 ? 'heart' : 'hearts'}`, hitToast: 'Collision! One heart lost', safeToast: 'Glowing arrows can exit safely',
+    completeKicker: 'LEVEL COMPLETE', completeTitle: 'Amazing! All clear!', completeBody: (time, count) => `You cleared all ${count} arrows in ${time}.`, playAgain: 'Play again', helpKicker: 'HOW TO PLAY',
+    retryKicker: 'TRY AGAIN', outOfLives: 'Out of lives', timeUp: "Time's up", retryBody: 'Look for exits around the edge to open paths for the inner arrows.', retry: 'Try again',
+    helpTitle: 'How to play', helpBody: 'Tap any segment of an arrow. Its head moves in the arrow’s direction while its body follows the bends like a snake. If the path is clear, it leaves the board. If it hits another arrow, it returns and you lose a heart. Clear the board before the current level’s timer runs out.', continue: 'Continue',
+  },
+};
+const t = key => TEXT[language][key];
 
 const el = (selector) => document.querySelector(selector);
 
@@ -49,7 +78,7 @@ function paintSnake(arrow) {
   const triangle = (a, b, c) => {
     for (const p of [a, b, c]) { positions[cursor++] = p[0]; positions[cursor++] = p[1]; positions[cursor++] = 0; }
   };
-  const radius = .019;
+  const radius = level === 1 ? .043 : .019;
   for (let i = 1; i < points.length; i++) {
     const a = points[i - 1], b = points[i];
     const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
@@ -65,9 +94,11 @@ function paintSnake(arrow) {
   }
   const head = points[points.length - 1];
   const [dx, dy] = arrow.direction;
-  triangle([head[0] + dx * .065, head[1] + dy * .065],
-    [head[0] - dx * .065 - dy * .060, head[1] - dy * .065 + dx * .060],
-    [head[0] - dx * .065 + dy * .060, head[1] - dy * .065 - dx * .060]);
+  const tipLength = level === 1 ? .12 : .065;
+  const tipWidth = level === 1 ? .11 : .060;
+  triangle([head[0] + dx * tipLength, head[1] + dy * tipLength],
+    [head[0] - dx * tipLength - dy * tipWidth, head[1] - dy * tipLength + dx * tipWidth],
+    [head[0] - dx * tipLength + dy * tipWidth, head[1] - dy * tipLength - dx * tipWidth]);
   arrow.geometry.setDrawRange(0, cursor / 3);
   arrow.geometry.attributes.position.needsUpdate = true;
 }
@@ -80,7 +111,7 @@ function makeArrow(definition) {
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
   const group = new THREE.Mesh(geometry, material);
   group.frustumCulled = false;
-  const arrow = { ...definition, group, geometry, positions, material, color, route: makeRoute(definition.cells), alive: true, hintUntil: 0, flashUntil: 0 };
+  const arrow = { ...definition, group, geometry, positions, material, color, route: makeRoute(definition.cells, gridSize), alive: true, hintUntil: 0, flashUntil: 0 };
   moveSnake(arrow, 0);
   paintSnake(arrow);
   arrowLayer.add(group);
@@ -89,15 +120,15 @@ function makeArrow(definition) {
 
 function addBoardDecoration() {
   const faint = new THREE.MeshBasicMaterial({ color: 0x7d98bc, transparent: true, opacity: 0.08, depthWrite: false });
-  for (let row = 0; row < GRID; row++) {
-    for (let col = 0; col < GRID; col++) {
+  for (let row = 0; row < gridSize; row++) {
+    for (let col = 0; col < gridSize; col++) {
       const dot = new THREE.Mesh(new THREE.CircleGeometry(.009, 12), faint);
-      dot.position.set((col - (GRID - 1) / 2) * STEP, (row - (GRID - 1) / 2) * STEP, -.2);
+      dot.position.set((col - (gridSize - 1) / 2) * STEP, (row - (gridSize - 1) / 2) * STEP, -.2);
       scene.add(dot);
     }
   }
   const edge = new THREE.MeshBasicMaterial({ color: 0x9cb5cf, transparent: true, opacity: .15, depthWrite: false });
-  const span = 3.65;
+  const span = (gridSize - 1) * STEP / 2 + .13;
   const corner = .19;
   for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
     const x = sx * span, y = sy * span;
@@ -106,12 +137,81 @@ function addBoardDecoration() {
   }
 }
 
+function clearBoardDecoration() {
+  const decorations = scene.children.filter(object => object !== arrowLayer);
+  for (const object of decorations) {
+    scene.remove(object);
+    object.geometry?.dispose();
+    if (Array.isArray(object.material)) object.material.forEach(material => material.dispose());
+    else object.material?.dispose();
+  }
+}
+
+function startFireworks() {
+  if (fireworks) {
+    scene.remove(fireworks.points);
+    fireworks.geometry.dispose();
+    fireworks.material.dispose();
+  }
+  const count = 420;
+  const positions = new Float32Array(count * 3);
+  const velocities = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const palette = [0xffd166, 0xff6b8a, 0x7be3c0, 0x7dbfed, 0xc9a2ff, 0xffffff];
+  for (let i = 0; i < count; i++) {
+    const burst = Math.floor(i / 70);
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1.2 + Math.random() * 2.5;
+    const base = burst * 70;
+    const originX = ((burst % 3) - 1) * 1.9;
+    const originY = -1.4 + Math.floor(burst / 3) * .5;
+    positions[i * 3] = originX;
+    positions[i * 3 + 1] = originY;
+    positions[i * 3 + 2] = 1 + Math.random() * .5;
+    velocities[i * 3] = Math.cos(angle) * speed;
+    velocities[i * 3 + 1] = Math.sin(angle) * speed + 1.2;
+    velocities[i * 3 + 2] = 0;
+    const color = new THREE.Color(palette[base % palette.length]);
+    colors[i * 3] = color.r;
+    colors[i * 3 + 1] = color.g;
+    colors[i * 3 + 2] = color.b;
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const material = new THREE.PointsMaterial({ size: 8, vertexColors: true, transparent: true, opacity: 1, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: false, toneMapped: false });
+  const points = new THREE.Points(geometry, material);
+  points.frustumCulled = false;
+  points.renderOrder = 1000;
+  scene.add(points);
+  fireworks = { points, geometry, material, velocities, positions, age: 0 };
+}
+
+function updateFireworks(dt) {
+  if (!fireworks) return;
+  fireworks.age += dt;
+  const { positions, velocities, geometry, material, age } = fireworks;
+  for (let i = 0; i < velocities.length / 3; i++) {
+    positions[i * 3] += velocities[i * 3] * dt;
+    positions[i * 3 + 1] += velocities[i * 3 + 1] * dt;
+    velocities[i * 3 + 1] -= 2.7 * dt;
+  }
+  geometry.attributes.position.needsUpdate = true;
+  material.opacity = Math.max(0, 1 - age / 1.7);
+  if (age >= 1.7) {
+    scene.remove(fireworks.points);
+    geometry.dispose();
+    material.dispose();
+    fireworks = null;
+  }
+}
+
 function resize() {
   const width = wrap.clientWidth;
   const height = wrap.clientHeight;
   renderer.setSize(width, height, false);
   const aspect = width / height;
-  const halfHeight = aspect < 1.1 ? 4.18 : 4.05;
+  const halfHeight = gridSize === GRID ? (aspect < 1.1 ? 4.18 : 4.05) : gridSize === LEVEL_2_GRID ? (aspect < 1.1 ? 3.02 : 2.92) : (aspect < 1.1 ? 4.55 : 4.45);
   camera.left = -halfHeight * aspect;
   camera.right = halfHeight * aspect;
   camera.top = halfHeight;
@@ -127,15 +227,76 @@ function updateHud() {
   el('#timer').textContent = `${String(Math.floor(Math.ceil(seconds) / 60)).padStart(2, '0')}:${String(Math.ceil(seconds) % 60).padStart(2, '0')}`;
   el('#timer').style.color = seconds <= 20 ? '#ff7892' : '';
   el('#hearts').innerHTML = Array.from({ length: 3 }, (_, index) => `<span class="${index >= lives ? 'lost' : ''}">♥</span>`).join(' ');
-  el('#hearts').setAttribute('aria-label', `${lives} 颗心`);
+  el('#hearts').setAttribute('aria-label', t('hearts')(lives));
   const clear = Math.round((TOTAL - remaining) / TOTAL * 100);
-  el('#progressText').textContent = `${clear}% CLEAR`;
+  el('#progressText').textContent = `${clear}% ${t('clear')}`;
   el('#progressFill').style.width = `${clear}%`;
   el('#hintCount').textContent = hints;
   el('#hintBtn').disabled = hints === 0 || ended;
 }
 
-function blockerFor(arrow) { return findMovingBlocker(arrow, arrows); }
+function applyLanguage() {
+  document.documentElement.lang = language === 'en' ? 'en' : 'zh-CN';
+  document.title = `${t('gameName')} · ${language === 'en' ? 'Level 1' : '第一关'}`;
+  const staticText = {
+    '#brandName': 'gameName', '#tagline': 'tagline', '#remainingLabel': 'remaining',
+  '#timeLabel': 'time', '#livesLabel': 'lives',
+    '#boardHint': 'boardHint', '#instructionTitle': 'instruction', '#instructionDetail': 'collisionHint',
+    '#hintLabel': 'hint', '#restartLabel': 'restart',
+  };
+  for (const [selector, key] of Object.entries(staticText)) el(selector).textContent = t(key);
+  el('#boardName').textContent = t('boardName')(level);
+  el('#stats').setAttribute('aria-label', t('gameState'));
+  el('#boardFrame').setAttribute('aria-label', t('board'));
+  el('#themeBtn').setAttribute('aria-label', t('themeLabel'));
+  el('#themeBtn').title = t('themeLabel');
+  el('#helpBtn').setAttribute('aria-label', t('helpLabel'));
+  el('#helpBtn').title = t('helpLabel');
+  el('#languageBtn').setAttribute('aria-label', t('languageLabel'));
+  el('#languageBtn').title = t('languageLabel');
+  el('#languageBtn').textContent = language === 'en' ? '中' : 'EN';
+  const nextLevel = level === 3 ? 1 : level + 1;
+  el('#levelBtn').textContent = t('levelButton')(nextLevel);
+  el('#levelBtn').setAttribute('aria-label', t('levelTitle')(nextLevel));
+  el('#levelBtn').title = t('levelTitle')(nextLevel);
+  el('#levelNumber').textContent = `LEVEL ${String(level).padStart(2, '0')}`;
+  if (!started && !ended) el('#boardStatus').textContent = t('boardStart');
+  else if (started && !ended) el('#boardStatus').textContent = t('boardMoving');
+  if (el('#overlayTitle').textContent) refreshOverlayText();
+  updateHud();
+}
+
+function refreshOverlayText() {
+  const title = el('#overlayTitle');
+  if (title.dataset.kind === 'help') {
+    el('#overlayKicker').textContent = t('helpKicker');
+    title.textContent = t('helpTitle');
+    el('#overlayBody').textContent = t('helpBody');
+    el('#overlayButton').textContent = t('continue');
+  } else if (title.dataset.kind === 'win') {
+    el('#overlayKicker').textContent = t('completeKicker');
+    title.textContent = t('completeTitle');
+    const elapsed = LEVEL_LIMITS[level] - seconds;
+    const time = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(Math.floor(elapsed % 60)).padStart(2, '0')}`;
+    el('#overlayBody').textContent = t('completeBody')(time, arrows.length);
+    el('#overlayButton').textContent = t('playAgain');
+    el('#overlayButton').className = 'control-button primary';
+  } else if (title.dataset.kind === 'next') {
+    const nextLevel = level + 1;
+    el('#overlayKicker').textContent = t('completeKicker');
+    title.textContent = t('nextLevelTitle');
+    el('#overlayBody').textContent = t('nextLevelBody')(nextLevel);
+    el('#overlayButton').textContent = t('nextLevelButton');
+    el('#overlayButton').className = 'control-button next-level-button';
+  } else if (title.dataset.kind === 'loss') {
+    el('#overlayKicker').textContent = t('retryKicker');
+    title.textContent = lives === 0 ? t('outOfLives') : t('timeUp');
+    el('#overlayBody').textContent = t('retryBody');
+    el('#overlayButton').textContent = t('retry');
+  }
+}
+
+function blockerFor(arrow) { return findMovingBlocker(arrow, arrows, level === 1 ? .09 : level === 3 ? .065 : .045); }
 
 function moveSnake(arrow, travel) {
   arrow.points = snakePoints(arrow.route, arrow.direction, travel);
@@ -149,33 +310,56 @@ function showToast(message) {
   toastTimeout = setTimeout(() => toast.classList.remove('show'), 2400);
 }
 
-function openOverlay({ symbol, kicker, title, body, button, action }) {
+function openOverlay({ symbol, kicker, title, body, button, action, kind = 'help', buttonClass = 'control-button primary' }) {
   el('#overlaySymbol').textContent = symbol;
   el('#overlayKicker').textContent = kicker;
   el('#overlayTitle').textContent = title;
+  el('#overlayTitle').dataset.kind = kind;
   el('#overlayBody').textContent = body;
   el('#overlayButton').textContent = button;
+  el('#overlayButton').className = buttonClass;
   overlayAction = action;
+  el('#overlay').classList.toggle('celebrating', kind === 'next' || kind === 'win');
   el('#overlay').classList.remove('hidden');
 }
 
-function closeOverlay() { el('#overlay').classList.add('hidden'); }
+function closeOverlay() {
+  el('#overlay').classList.add('hidden');
+  el('#overlay').classList.remove('celebrating');
+}
 
 function finish(won) {
   ended = true;
   audio.stop();
-  if (won) audio.victory();
+  if (won) {
+    audio.victory();
+    startFireworks();
+  }
   else audio.failure();
-  el('#boardStatus').textContent = won ? '全部箭头已清除' : '挑战结束';
+  el('#boardStatus').textContent = won ? t('boardCleared') : t('boardEnded');
   updateHud();
+  if (won && level < 3) {
+    openOverlay({
+      symbol: '✦', kicker: t('completeKicker'), title: t('nextLevelTitle'),
+      body: t('nextLevelBody')(level + 1), button: t('nextLevelButton'), kind: 'next',
+      buttonClass: 'control-button next-level-button',
+      action: () => {
+        level++;
+        lastLayout = '';
+        reset();
+        applyLanguage();
+      },
+    });
+    return;
+  }
   openOverlay(won ? {
-    symbol: '✦', kicker: 'LEVEL COMPLETE', title: '漂亮，全部突围！',
-    body: `你在 ${String(Math.floor((LIMIT - seconds) / 60)).padStart(2, '0')}:${String(Math.floor((LIMIT - seconds) % 60)).padStart(2, '0')} 内清除了全部 ${arrows.length} 支箭头。`,
-    button: '再玩一次', action: reset,
+    symbol: '✦', kicker: t('completeKicker'), title: t('completeTitle'),
+    body: t('completeBody')(`${String(Math.floor((LEVEL_LIMITS[level] - seconds) / 60)).padStart(2, '0')}:${String(Math.floor((LEVEL_LIMITS[level] - seconds) % 60)).padStart(2, '0')}`, arrows.length),
+    button: t('playAgain'), action: reset, kind: 'win',
   } : {
-    symbol: '↻', kicker: 'TRY AGAIN', title: lives === 0 ? '生命值耗尽' : '时间到了',
-    body: '先从外圈找出口，逐步为内侧箭头打开通路。',
-    button: '重新挑战', action: reset,
+    symbol: '↻', kicker: t('retryKicker'), title: lives === 0 ? t('outOfLives') : t('timeUp'),
+    body: t('retryBody'),
+    button: t('retry'), action: reset, kind: 'loss',
   });
 }
 
@@ -184,7 +368,8 @@ function launch(arrow) {
   audio.clear();
   if (!started) {
     started = true;
-    el('#boardStatus').textContent = '箭头正在突围';
+    el('#boardStatus').textContent = t('boardMoving');
+    audio.startMusic();
   }
   active.set(arrow.id, { arrow, traveled: 0, phase: 'forward', hold: 0 });
 }
@@ -194,20 +379,24 @@ function reset() {
   closeOverlay();
   for (const arrow of arrows) { arrowLayer.remove(arrow.group); arrow.geometry.dispose(); arrow.material.dispose(); }
   arrows.length = 0;
+  gridSize = level === 1 ? LEVEL_2_GRID : level === 2 ? GRID : LEVEL_3_GRID;
+  clearBoardDecoration();
+  addBoardDecoration();
   let definitions, layout;
   do {
-    definitions = generateLevel();
+    definitions = level === 1 ? generateLevel2() : level === 2 ? generateLevel() : generateLevel3();
     layout = JSON.stringify(definitions);
   } while (layout === lastLayout);
   lastLayout = layout;
+  resize();
   for (const definition of definitions) arrows.push(makeArrow(definition));
-  seconds = LIMIT;
+  seconds = LEVEL_LIMITS[level];
   lives = 3;
   hints = 3;
   started = false;
   ended = false;
   active.clear();
-  el('#boardStatus').textContent = '点击任意箭头开始';
+  el('#boardStatus').textContent = t('boardStart');
   updateHud();
 }
 
@@ -241,13 +430,15 @@ function onPointer(event, clientX = event.clientX, clientY = event.clientY) {
   // Moving snakes still participate in picking: tapping one must not pass
   // through to a stationary neighbor. Ambiguous taps between snakes do nothing.
   const touch = event.pointerType === 'touch';
-  if (closest && nearest <= (touch ? 7 : 8) && second - nearest > (touch ? 2 : 1)) launch(closest);
+  const hitRadius = (touch ? 7 : 8) + (level === 1 ? 5 : level === 3 ? 2 : 0);
+  if (closest && nearest <= hitRadius && second - nearest > (touch ? 2 : 1)) launch(closest);
 }
 
 function animate(now) {
   requestAnimationFrame(animate);
   const dt = Math.min((now - lastFrame) / 1000, .05);
   lastFrame = now;
+  updateFireworks(dt);
   if (started && !ended && el('#overlay').classList.contains('hidden')) {
     seconds = Math.max(0, seconds - dt);
     if (seconds <= 0) finish(false);
@@ -272,7 +463,7 @@ function animate(now) {
             motion.phase = 'hit';
             motion.hold = .12;
             arrow.flashUntil = now + 180;
-            showToast('撞到了！失去一颗心');
+            showToast(t('hitToast'));
             audio.hit();
             lives = Math.max(0, lives - 1);
             updateHud();
@@ -308,8 +499,9 @@ function hasExited(arrow) {
   const [x, y] = arrow.points[0];
   const [dx, dy] = arrow.direction;
   const margin = .09;
-  return dx > 0 && x > camera.right + margin || dx < 0 && x < camera.left - margin ||
-    dy > 0 && y > camera.top + margin || dy < 0 && y < camera.bottom - margin;
+  const edge = (gridSize - 1) * STEP / 2;
+  return dx > 0 && x > edge + margin || dx < 0 && x < -edge - margin ||
+    dy > 0 && y > edge + margin || dy < 0 && y < -edge - margin;
 }
 
 let press = null;
@@ -340,7 +532,7 @@ el('#hintBtn').addEventListener('click', () => {
   arrow.hintUntil = performance.now() + 2700;
   hints--;
   updateHud();
-  showToast('闪烁的箭头可以安全离场');
+  showToast(t('safeToast'));
 });
 el('#themeBtn').addEventListener('click', () => {
   document.body.classList.toggle('light');
@@ -348,14 +540,24 @@ el('#themeBtn').addEventListener('click', () => {
   el('#themeBtn').textContent = document.body.classList.contains('light') ? '☀' : '☾';
 });
 el('#helpBtn').addEventListener('click', () => openOverlay({
-  symbol: '↗', kicker: 'HOW TO PLAY', title: '箭头突围',
-  body: '点击折线箭头的任意一段，头部会朝箭头所指方向前进，身体与尾部像贪吃蛇一样沿折线路径依次跟随。前方没有箭头就能离场；撞到其他箭头会返回原位，并失去一颗心。在三分钟内清空方阵即可过关。',
-  button: '继续游戏', action: closeOverlay,
+  symbol: '↗', kicker: t('helpKicker'), title: t('helpTitle'),
+  body: t('helpBody'), button: t('continue'), action: closeOverlay,
 }));
+el('#languageBtn').addEventListener('click', () => {
+  language = language === 'zh' ? 'en' : 'zh';
+  try { localStorage.setItem('arrowSnakeLanguage', language); } catch { /* Keep the selected language for this session. */ }
+  applyLanguage();
+});
+el('#levelBtn').addEventListener('click', () => {
+  level = level === 3 ? 1 : level + 1;
+  lastLayout = '';
+  reset();
+  applyLanguage();
+});
 el('#overlayButton').addEventListener('click', () => overlayAction?.());
 window.addEventListener('resize', resize);
-addBoardDecoration();
 reset();
+applyLanguage();
 resize();
 requestAnimationFrame(animate);
 
