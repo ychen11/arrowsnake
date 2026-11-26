@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import './style.css';
 
-import { GRID, STEP, LEVEL_2_GRID, LEVEL_3_GRID, generateLevel, generateLevel2, generateLevel3, makeRoute, snakePoints, findMovingBlocker, distanceToSegment } from './puzzle.js';
+import { GRID, STEP, makeRoute, snakePoints, findMovingBlocker, distanceToSegment } from './puzzle.js';
 import { createGameAudio } from './audio.js';
 
-const LEVEL_LIMITS = { 1: 60, 2: 180, 3: 240 };
+const DEFAULT_LEVEL = { gridSize: 19, timeSeconds: 60, arrowRadius: .043, arrowTipLength: .12, arrowTipWidth: .11, hitRadius: 5, collisionTolerance: .09 };
 const PALETTE = [0x7be3c0, 0x7dbfed, 0xffd477, 0xf38fa2, 0xb9a0ec, 0x92d975, 0x75d7d4, 0xf1aa78];
 const canvas = document.querySelector('#gameCanvas');
 const wrap = document.querySelector('#canvasWrap');
@@ -22,9 +22,10 @@ const arrowLayer = new THREE.Group();
 scene.add(arrowLayer);
 let level = 1;
 let gridSize = GRID;
+let levelConfig = { ...DEFAULT_LEVEL };
 let lives = 3;
 let hints = 3;
-let seconds = LEVEL_LIMITS[1];
+let seconds = DEFAULT_LEVEL.timeSeconds;
 let started = false;
 let ended = false;
 const active = new Map();
@@ -35,13 +36,15 @@ let overlayAction = null;
 let lastLayout = '';
 let language = 'zh';
 let fireworks = null;
+let levelRequestId = 0;
+let latestLoadedLevel = 1;
 try { language = localStorage.getItem('arrowSnakeLanguage') === 'en' ? 'en' : 'zh'; } catch { /* Storage can be disabled for local files. */ }
 
 const TEXT = {
   zh: {
     gameName: '箭头突围', languageLabel: '切换语言', themeLabel: '切换昼夜模式', helpLabel: '玩法说明',
     tagline: '找出出口，让每支箭头安全离场。', gameState: '游戏状态', remaining: '剩余箭头', time: '剩余时间', lives: '生命值', nextLevelTitle: '关卡完成！', nextLevelBody: n => `准备好进入第 ${n} 关了吗？`, nextLevelButton: '下一关',
-    board: '箭头游戏棋盘', boardName: n => `第${n}关 · 方形阵列`, boardStart: '点击任意箭头开始', boardMoving: '箭头正在突围', boardCleared: '全部箭头已清除', boardEnded: '挑战结束', levelButton: n => `关卡 ${n} ↗`, levelTitle: n => `切换到第${n}关`,
+    board: '箭头游戏棋盘', boardName: n => `第${n}关 · 方形阵列`, boardStart: '点击任意箭头开始', boardMoving: '箭头正在突围', boardCleared: '全部箭头已清除', boardEnded: '挑战结束', boardLoading: '正在载入关卡…', boardLoadFailed: '关卡载入失败，请重试', levelButton: n => `关卡 ${n} ↗`, levelTitle: n => `切换到第${n}关`,
     boardHint: '每条彩色折线都是一支箭头', instruction: '点击箭头，让蛇身沿路径游出', collisionHint: '撞到其他箭头会失去一颗心', hint: '提示', restart: '重新开始', clear: 'CLEAR',
     hearts: n => `${n} 颗心`, hitToast: '撞到了！失去一颗心', safeToast: '闪烁的箭头可以安全离场',
     completeKicker: 'LEVEL COMPLETE', completeTitle: '漂亮，全部突围！', completeBody: (time, count) => `你在 ${time} 内清除了全部 ${count} 支箭头。`, playAgain: '再玩一次', helpKicker: '玩法说明',
@@ -51,7 +54,7 @@ const TEXT = {
   en: {
     gameName: 'ArrowSnake', languageLabel: 'Switch language', themeLabel: 'Toggle light/dark mode', helpLabel: 'How to play',
     tagline: 'Find the exits and guide every arrow to safety.', gameState: 'Game status', remaining: 'Arrows left', time: 'Time left', lives: 'Lives', nextLevelTitle: 'Level complete!', nextLevelBody: n => `Ready to start level ${n}?`, nextLevelButton: 'Next level',
-    board: 'Arrow game board', boardName: n => `Level ${n} · Square formation`, boardStart: 'Tap any arrow to begin', boardMoving: 'Arrows are escaping', boardCleared: 'All arrows cleared', boardEnded: 'Game over', levelButton: n => `LEVEL ${n} ↗`, levelTitle: n => `Switch to level ${n}`,
+    board: 'Arrow game board', boardName: n => `Level ${n} · Square formation`, boardStart: 'Tap any arrow to begin', boardMoving: 'Arrows are escaping', boardCleared: 'All arrows cleared', boardEnded: 'Game over', boardLoading: 'Loading level…', boardLoadFailed: 'Could not load level. Please retry.', levelButton: n => `LEVEL ${n} ↗`, levelTitle: n => `Switch to level ${n}`,
     boardHint: 'Each colored path is an arrow', instruction: 'Tap an arrow to send it along its path', collisionHint: 'Hitting another arrow costs one heart', hint: 'Hint', restart: 'Restart', clear: 'CLEAR',
     hearts: n => `${n} ${n === 1 ? 'heart' : 'hearts'}`, hitToast: 'Collision! One heart lost', safeToast: 'Glowing arrows can exit safely',
     completeKicker: 'LEVEL COMPLETE', completeTitle: 'Amazing! All clear!', completeBody: (time, count) => `You cleared all ${count} arrows in ${time}.`, playAgain: 'Play again', helpKicker: 'HOW TO PLAY',
@@ -78,7 +81,7 @@ function paintSnake(arrow) {
   const triangle = (a, b, c) => {
     for (const p of [a, b, c]) { positions[cursor++] = p[0]; positions[cursor++] = p[1]; positions[cursor++] = 0; }
   };
-  const radius = level === 1 ? .043 : .019;
+  const radius = levelConfig.arrowRadius;
   for (let i = 1; i < points.length; i++) {
     const a = points[i - 1], b = points[i];
     const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
@@ -94,8 +97,8 @@ function paintSnake(arrow) {
   }
   const head = points[points.length - 1];
   const [dx, dy] = arrow.direction;
-  const tipLength = level === 1 ? .12 : .065;
-  const tipWidth = level === 1 ? .11 : .060;
+  const tipLength = levelConfig.arrowTipLength;
+  const tipWidth = levelConfig.arrowTipWidth;
   triangle([head[0] + dx * tipLength, head[1] + dy * tipLength],
     [head[0] - dx * tipLength - dy * tipWidth, head[1] - dy * tipLength + dx * tipWidth],
     [head[0] - dx * tipLength + dy * tipWidth, head[1] - dy * tipLength - dx * tipWidth]);
@@ -211,7 +214,7 @@ function resize() {
   const height = wrap.clientHeight;
   renderer.setSize(width, height, false);
   const aspect = width / height;
-  const halfHeight = gridSize === GRID ? (aspect < 1.1 ? 4.18 : 4.05) : gridSize === LEVEL_2_GRID ? (aspect < 1.1 ? 3.02 : 2.92) : (aspect < 1.1 ? 4.55 : 4.45);
+  const halfHeight = Math.max(gridSize * STEP * .56, aspect < 1.1 ? 4.18 : 4.05);
   camera.left = -halfHeight * aspect;
   camera.right = halfHeight * aspect;
   camera.top = halfHeight;
@@ -276,7 +279,7 @@ function refreshOverlayText() {
   } else if (title.dataset.kind === 'win') {
     el('#overlayKicker').textContent = t('completeKicker');
     title.textContent = t('completeTitle');
-    const elapsed = LEVEL_LIMITS[level] - seconds;
+    const elapsed = levelConfig.timeSeconds - seconds;
     const time = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(Math.floor(elapsed % 60)).padStart(2, '0')}`;
     el('#overlayBody').textContent = t('completeBody')(time, arrows.length);
     el('#overlayButton').textContent = t('playAgain');
@@ -296,7 +299,7 @@ function refreshOverlayText() {
   }
 }
 
-function blockerFor(arrow) { return findMovingBlocker(arrow, arrows, level === 1 ? .09 : level === 3 ? .065 : .045); }
+function blockerFor(arrow) { return findMovingBlocker(arrow, arrows, levelConfig.collisionTolerance); }
 
 function moveSnake(arrow, travel) {
   arrow.points = snakePoints(arrow.route, arrow.direction, travel);
@@ -354,7 +357,7 @@ function finish(won) {
   }
   openOverlay(won ? {
     symbol: '✦', kicker: t('completeKicker'), title: t('completeTitle'),
-    body: t('completeBody')(`${String(Math.floor((LEVEL_LIMITS[level] - seconds) / 60)).padStart(2, '0')}:${String(Math.floor((LEVEL_LIMITS[level] - seconds) % 60)).padStart(2, '0')}`, arrows.length),
+    body: t('completeBody')(`${String(Math.floor((levelConfig.timeSeconds - seconds) / 60)).padStart(2, '0')}:${String(Math.floor((levelConfig.timeSeconds - seconds) % 60)).padStart(2, '0')}`, arrows.length),
     button: t('playAgain'), action: reset, kind: 'win',
   } : {
     symbol: '↻', kicker: t('retryKicker'), title: lives === 0 ? t('outOfLives') : t('timeUp'),
@@ -374,29 +377,40 @@ function launch(arrow) {
   active.set(arrow.id, { arrow, traveled: 0, phase: 'forward', hold: 0 });
 }
 
-function reset() {
+async function reset() {
+  const requestId = ++levelRequestId;
   audio.stop();
   closeOverlay();
   for (const arrow of arrows) { arrowLayer.remove(arrow.group); arrow.geometry.dispose(); arrow.material.dispose(); }
   arrows.length = 0;
-  gridSize = level === 1 ? LEVEL_2_GRID : level === 2 ? GRID : LEVEL_3_GRID;
   clearBoardDecoration();
-  addBoardDecoration();
-  let definitions, layout;
-  do {
-    definitions = level === 1 ? generateLevel2() : level === 2 ? generateLevel() : generateLevel3();
-    layout = JSON.stringify(definitions);
-  } while (layout === lastLayout);
-  lastLayout = layout;
-  resize();
-  for (const definition of definitions) arrows.push(makeArrow(definition));
-  seconds = LEVEL_LIMITS[level];
+  started = false;
+  ended = true;
+  active.clear();
+  el('#boardStatus').textContent = t('boardLoading');
+  updateHud();
+  try {
+    const response = await fetch(`/api/levels/${level}`, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Level API returned ${response.status}`);
+    const data = await response.json();
+    if (requestId !== levelRequestId) return;
+    if (data.level !== level || !Array.isArray(data.arrows) || !Number.isInteger(data.gridSize) || !Number.isFinite(data.timeSeconds)) throw new Error('Invalid level response');
+    levelConfig = data;
+    gridSize = data.gridSize;
+    addBoardDecoration();
+    resize();
+    for (const definition of data.arrows) arrows.push(makeArrow(definition));
+    seconds = data.timeSeconds;
+    latestLoadedLevel = data.level;
+    ended = false;
+    el('#boardStatus').textContent = t('boardStart');
+  } catch (error) {
+    if (requestId !== levelRequestId) return;
+    console.error('Could not load level', error);
+    el('#boardStatus').textContent = t('boardLoadFailed');
+  }
   lives = 3;
   hints = 3;
-  started = false;
-  ended = false;
-  active.clear();
-  el('#boardStatus').textContent = t('boardStart');
   updateHud();
 }
 
@@ -430,7 +444,7 @@ function onPointer(event, clientX = event.clientX, clientY = event.clientY) {
   // Moving snakes still participate in picking: tapping one must not pass
   // through to a stationary neighbor. Ambiguous taps between snakes do nothing.
   const touch = event.pointerType === 'touch';
-  const hitRadius = (touch ? 7 : 8) + (level === 1 ? 5 : level === 3 ? 2 : 0);
+  const hitRadius = (touch ? 7 : 8) + levelConfig.hitRadius;
   if (closest && nearest <= hitRadius && second - nearest > (touch ? 2 : 1)) launch(closest);
 }
 
@@ -563,7 +577,7 @@ requestAnimationFrame(animate);
 
 // Read-only snapshots allow geometry and browser interaction checks on the real scene.
 window.arrowGame = { snapshot: () => ({
-  lives, seconds, started, ended,
+  lives, seconds, started, ended, level: latestLoadedLevel,
   active: [...active.values()].map(m => ({ id: m.arrow.id, phase: m.phase, traveled: m.traveled })),
   arrows: arrows.map(a => ({ id: a.id, alive: a.alive, cells: a.cells, direction: a.direction,
     length: a.route.length, points: a.points,

@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "npm run build:standalone",
-    "build:standalone": "node -e \"const fs=require('node:fs');fs.rmSync('dist',{recursive:true,force:true});fs.mkdirSync('dist',{recursive:true})\" && esbuild src/main.js --bundle --format=iife --minify --outfile=game.js --loader:.css=empty && node -e \"const fs=require('node:fs');fs.copyFileSync('game.js','dist/game.js');fs.copyFileSync('src/style.css','game.css');fs.copyFileSync('src/style.css','dist/game.css');fs.copyFileSync('index.html','dist/index.html');fs.copyFileSync('Morning_in_the_Conservatory.mp3','dist/Morning_in_the_Conservatory.mp3')\"",
+    "cf:db:create": "wrangler d1 create arrowsnake-levels",
+    "cf:db:migrate:local": "wrangler d1 migrations apply arrowsnake-levels --local --persist-to .wrangler/state",
+    "cf:db:migrate:remote": "wrangler d1 migrations apply arrowsnake-levels --remote",
+    "cf:pages:dev": "npm run cf:db:migrate:local && wrangler pages dev dist --persist-to .wrangler/state",
+    "build:standalone": "node -e \"const fs=require('node:fs');fs.rmSync('dist',{recursive:true,force:true});fs.mkdirSync('dist',{recursive:true})\" && esbuild src/main.js --bundle --format=iife --minify --outfile=game.unobfuscated.js --loader:.css=empty && javascript-obfuscator game.unobfuscated.js --output game.js --compact true --string-array true --string-array-encoding base64 --string-array-threshold 0.65 --control-flow-flattening false && node -e \"const fs=require('node:fs');fs.copyFileSync('game.js','dist/game.js');fs.copyFileSync('src/style.css','game.css');fs.copyFileSync('src/style.css','dist/game.css');fs.copyFileSync('index.html','dist/index.html');fs.copyFileSync('Morning_in_the_Conservatory.mp3','dist/Morning_in_the_Conservatory.mp3')\" && node -e \"require('node:fs').rmSync('game.unobfuscated.js',{force:true})\"",
     "build:vite": "vite build",
     "preview": "vite preview --host 0.0.0.0"
   },
@@ -14,6 +18,8 @@
     "three": "^0.181.2"
   },
   "devDependencies": {
-    "vite": "^7.2.2"
+    "javascript-obfuscator": "^5.10.1",
+    "vite": "^7.2.2",
+    "wrangler": "^4.168.0"
   }
 }
