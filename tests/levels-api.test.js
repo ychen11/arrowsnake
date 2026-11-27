@@ -28,7 +28,7 @@ test('levels API reports missing D1 binding clearly', async () => {
   assert.match((await response.json()).error, /database/i);
 });
 
-test('levels API reads config from D1 and returns a generated level', async () => {
+test('levels API reads config from D1 and returns configuration only', async () => {
   const db = mockDb({ id: 2, grid_size: 27, min_arrow_length: 9, max_arrow_length: 33,
     min_arrows: null, max_arrows: null, time_seconds: 180, arrow_radius: .019,
     arrow_tip_length: .065, arrow_tip_width: .06, hit_radius: 0, collision_tolerance: .045 });
@@ -38,6 +38,8 @@ test('levels API reads config from D1 and returns a generated level', async () =
   assert.equal(payload.level, 2);
   assert.equal(payload.gridSize, 27);
   assert.equal(payload.timeSeconds, 180);
-  assert.ok(payload.arrows.length >= 1);
+  assert.equal(payload.minArrowLength, 9);
+  assert.equal(payload.maxArrowLength, 33);
+  assert.equal('arrows' in payload, false);
   assert.deepEqual(db.bound, [2]);
 });

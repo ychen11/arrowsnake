@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import './style.css';
 
-import { GRID, STEP, makeRoute, snakePoints, findMovingBlocker, distanceToSegment } from './puzzle.js';
+import { GRID, STEP, makeRoute, snakePoints, findMovingBlocker, distanceToSegment, generateConfiguredLevel } from './puzzle.js';
 import { createGameAudio } from './audio.js';
 
 const DEFAULT_LEVEL = { gridSize: 19, timeSeconds: 60, arrowRadius: .043, arrowTipLength: .12, arrowTipWidth: .11, hitRadius: 5, collisionTolerance: .09 };
@@ -394,12 +394,23 @@ async function reset() {
     if (!response.ok) throw new Error(`Level API returned ${response.status}`);
     const data = await response.json();
     if (requestId !== levelRequestId) return;
-    if (data.level !== level || !Array.isArray(data.arrows) || !Number.isInteger(data.gridSize) || !Number.isFinite(data.timeSeconds)) throw new Error('Invalid level response');
+    if (data.level !== level || !Number.isInteger(data.gridSize) || data.gridSize < 2 ||
+        !Number.isFinite(data.timeSeconds) || !Number.isInteger(data.minArrowLength) ||
+        data.minArrowLength < 2 || !Number.isInteger(data.maxArrowLength) ||
+        data.maxArrowLength < data.minArrowLength) throw new Error('Invalid level response');
+    const seed = crypto.getRandomValues(new Uint32Array(1))[0];
+    const levelArrows = generateConfiguredLevel(seed, {
+      grid: data.gridSize,
+      minLength: data.minArrowLength,
+      maxLength: data.maxArrowLength,
+      minArrows: data.minArrows,
+      maxArrows: data.maxArrows,
+    });
     levelConfig = data;
     gridSize = data.gridSize;
     addBoardDecoration();
     resize();
-    for (const definition of data.arrows) arrows.push(makeArrow(definition));
+    for (const definition of levelArrows) arrows.push(makeArrow(definition));
     seconds = data.timeSeconds;
     latestLoadedLevel = data.level;
     ended = false;

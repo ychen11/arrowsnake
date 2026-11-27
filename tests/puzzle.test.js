@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateConfiguredLevel, validateLevel } from '../src/server/puzzle.js';
+import { generateConfiguredLevel, validateLevel } from '../src/puzzle.js';
 import { GRID, STEP, makeRoute, snakePoints, findBlocker, findMovingBlocker } from '../src/puzzle.js';
 
 const LEVEL_2_GRID = 19;
