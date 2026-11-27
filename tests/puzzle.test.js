@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { generateConfiguredLevel, validateLevel } from '../src/puzzle.js';
 import { GRID, STEP, makeRoute, snakePoints, findBlocker, findMovingBlocker } from '../src/puzzle.js';
 
-const LEVEL_2_GRID = 19;
-const LEVEL_3_GRID = 33;
+const LEVEL_1_GRID = 19;
+const LEVEL_2_GRID = 27;
+const LEVEL_3_GRID = 35;
 
 test('dense square has disjoint orthogonal snakes with varied lengths and turns', () => {
   const snakes = generateConfiguredLevel(23, { grid: GRID, minLength: 9, maxLength: 33 });
@@ -70,26 +71,23 @@ test('validation rejects holes, overlaps, and reversed head directions', () => {
   assert.equal(validateLevel(broken, GRID), false);
 });
 
-test('level 2 covers half-size board, stays under half the arrow count, and is solvable', () => {
-  assert.ok(LEVEL_2_GRID ** 2 < GRID ** 2 / 2);
+test('level 1 uses the small board with the shared arrow-length range and stays solvable', () => {
+  assert.ok(LEVEL_1_GRID ** 2 < GRID ** 2 / 2);
   for (let seed = 0; seed < 30; seed++) {
-    const first = generateConfiguredLevel(seed + 3000, { grid: GRID, minLength: 9, maxLength: 33 });
-    const second = generateConfiguredLevel(seed + 4000, { grid: LEVEL_2_GRID, minLength: 32, maxLength: 55 });
-    assert.ok(validateLevel(second, LEVEL_2_GRID), `invalid level 2 puzzle for seed ${seed}`);
-    assert.equal(new Set(second.flatMap(snake => snake.cells.map(([x, y]) => `${x},${y}`))).size, LEVEL_2_GRID ** 2);
-    assert.ok(second.length < first.length / 2, `level 2 has too many arrows for seed ${seed}`);
-    assert.equal(second.reduce((sum, snake) => sum + snake.cells.length, 0), LEVEL_2_GRID ** 2);
+    const first = generateConfiguredLevel(seed + 3000, { grid: LEVEL_1_GRID, minLength: 9, maxLength: 33 });
+    assert.ok(validateLevel(first, LEVEL_1_GRID), `invalid level 1 puzzle for seed ${seed}`);
+    assert.equal(new Set(first.flatMap(snake => snake.cells.map(([x, y]) => `${x},${y}`))).size, LEVEL_1_GRID ** 2);
+    assert.equal(first.reduce((sum, snake) => sum + snake.cells.length, 0), LEVEL_1_GRID ** 2);
   }
 });
 
-test('level 3 covers about 1.5 times level 2 area with 70–80 solvable arrows', () => {
-  assert.ok(LEVEL_3_GRID ** 2 / GRID ** 2 >= 1.45);
-  assert.ok(LEVEL_3_GRID ** 2 / GRID ** 2 <= 1.5);
+test('level 3 uses a larger board with the shared arrow-length range and stays solvable', () => {
+  assert.ok(LEVEL_3_GRID ** 2 > GRID ** 2);
   for (let seed = 0; seed < 60; seed++) {
-    const third = generateConfiguredLevel(seed + 9000, { grid: LEVEL_3_GRID, minLength: 12, maxLength: 42, minArrows: 70, maxArrows: 80 });
+    const third = generateConfiguredLevel(seed + 9000, { grid: LEVEL_3_GRID, minLength: 9, maxLength: 33 });
     assert.ok(validateLevel(third, LEVEL_3_GRID), `invalid level 3 puzzle for seed ${seed}`);
     assert.equal(new Set(third.flatMap(snake => snake.cells.map(([x, y]) => `${x},${y}`))).size, LEVEL_3_GRID ** 2);
-    assert.ok(third.length >= 70 && third.length <= 80, `level 3 has ${third.length} arrows for seed ${seed}`);
+    assert.equal(third.reduce((sum, snake) => sum + snake.cells.length, 0), LEVEL_3_GRID ** 2);
   }
 });
 

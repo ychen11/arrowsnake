@@ -19,6 +19,6 @@ INSERT OR REPLACE INTO levels (
   time_seconds, arrow_radius, arrow_tip_length, arrow_tip_width, hit_radius,
   collision_tolerance
 ) VALUES
-  (1, 19, 32, 55, NULL, NULL, 60, 0.043, 0.12, 0.11, 5, 0.09),
+  (1, 19, 9, 33, NULL, NULL, 60, 0.043, 0.12, 0.11, 5, 0.09),
   (2, 27, 9, 33, NULL, NULL, 180, 0.019, 0.065, 0.060, 0, 0.045),
-  (3, 33, 12, 42, 70, 80, 240, 0.019, 0.065, 0.060, 2, 0.065);
+  (3, 35, 9, 33, NULL, NULL, 240, 0.019, 0.065, 0.060, 2, 0.065);
