@@ -258,7 +258,7 @@ function applyLanguage() {
   el('#languageBtn').setAttribute('aria-label', t('languageLabel'));
   el('#languageBtn').title = t('languageLabel');
   el('#languageBtn').textContent = language === 'en' ? '中' : 'EN';
-  const nextLevel = level === 3 ? 1 : level + 1;
+  const nextLevel = level === 4 ? 1 : level + 1;
   el('#levelBtn').textContent = t('levelButton')(nextLevel);
   el('#levelBtn').setAttribute('aria-label', t('levelTitle')(nextLevel));
   el('#levelBtn').title = t('levelTitle')(nextLevel);
@@ -341,7 +341,7 @@ function finish(won) {
   else audio.failure();
   el('#boardStatus').textContent = won ? t('boardCleared') : t('boardEnded');
   updateHud();
-  if (won && level < 3) {
+  if (won && level < 4) {
     openOverlay({
       symbol: '✦', kicker: t('completeKicker'), title: t('nextLevelTitle'),
       body: t('nextLevelBody')(level + 1), button: t('nextLevelButton'), kind: 'next',
@@ -574,7 +574,7 @@ el('#languageBtn').addEventListener('click', () => {
   applyLanguage();
 });
 el('#levelBtn').addEventListener('click', () => {
-  level = level === 3 ? 1 : level + 1;
+  level = level === 4 ? 1 : level + 1;
   lastLayout = '';
   reset();
   applyLanguage();

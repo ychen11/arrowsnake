@@ -91,6 +91,16 @@ test('level 3 uses a larger board with the shared arrow-length range and stays s
   }
 });
 
+test('level 4 uses 9–15 cell arrows on a 35×35 board and stays solvable', () => {
+  for (let seed = 0; seed < 30; seed++) {
+    const fourth = generateConfiguredLevel(seed + 12000, { grid: 35, minLength: 9, maxLength: 15 });
+    assert.ok(validateLevel(fourth, 35), `invalid level 4 puzzle for seed ${seed}`);
+    assert.equal(new Set(fourth.flatMap(snake => snake.cells.map(([x, y]) => `${x},${y}`))).size, 35 ** 2);
+    assert.ok(fourth.every(snake => snake.cells.length >= 2 && snake.cells.length <= 15));
+    assert.equal(fourth.reduce((sum, snake) => sum + snake.cells.length, 0), 35 ** 2);
+  }
+});
+
 test('snake tail follows old bends while head moves straight and body length stays fixed', () => {
   const cells = [[0, 0], [1, 0], [1, 1], [2, 1], [2, 2]];
   const route = makeRoute(cells);

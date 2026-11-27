@@ -43,3 +43,19 @@ test('levels API reads config from D1 and returns configuration only', async () 
   assert.equal('arrows' in payload, false);
   assert.deepEqual(db.bound, [2]);
 });
+
+test('levels API returns level 4 configuration with a five-minute timer', async () => {
+  const db = mockDb({ id: 4, grid_size: 35, min_arrow_length: 9, max_arrow_length: 15,
+    min_arrows: null, max_arrows: null, time_seconds: 300, arrow_radius: .019,
+    arrow_tip_length: .065, arrow_tip_width: .06, hit_radius: 2, collision_tolerance: .065 });
+  const response = await onRequestGet({ params: { level: '4' }, env: { LEVELS_DB: db } });
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.level, 4);
+  assert.equal(payload.gridSize, 35);
+  assert.equal(payload.minArrowLength, 9);
+  assert.equal(payload.maxArrowLength, 15);
+  assert.equal(payload.timeSeconds, 300);
+  assert.equal(payload.minArrows, null);
+  assert.equal(payload.maxArrows, null);
+});

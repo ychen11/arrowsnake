@@ -5,7 +5,7 @@ const json = (data, status = 200) => new Response(JSON.stringify(data), {
 
 export async function onRequestGet({ params, env }) {
   const levelId = Number(params.level);
-  if (!Number.isInteger(levelId) || levelId < 1 || levelId > 3) {
+  if (!Number.isInteger(levelId) || levelId < 1 || levelId > 4) {
     return json({ error: 'Level not found' }, 404);
   }
 
